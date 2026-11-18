@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Form</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body{font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:20px}
+    button{padding:12px 18px;font-size:16px;border:0;border-radius:6px;background:#1a73e8;color:#fff;width:100%}
+    button:disabled{opacity:.6}
+    label{font-weight:bold;display:block}
+    input,textarea,select{width:100%;padding:10px;margin:6px 0 14px;box-sizing:border-box;font-size:16px}
+    .msg{padding:10px;border-radius:6px;margin:12px 0}
+    .err{background:#fde8e8;color:#b00020}.ok{background:#e6f4ea;color:#137333}
+    .hidden{display:none}
+  </style>
+</head>
+<body>
+  <h2>Please fill this form</h2>
+
+  <div id="gate">
+    <p>We need your location before you can continue. Your location will be saved with your response.</p>
+    <button id="locBtn">Allow location</button>
+    <div id="gateMsg" class="msg err hidden"></div>
+  </div>
+
+  <form id="form" class="hidden">
+    <div id="locInfo" class="msg ok"></div>
+    <div id="fields"></div>
+    <button type="submit" id="sendBtn">Submit</button>
+    <div id="formMsg" class="msg hidden"></div>
+  </form>
+
+<script>
+const API_URL = 'https://script.google.com/macros/s/AKfycbyirCjoFzIwrAE61vH7FRZ_7C95G2l6G8nIHDrhNaGGkP7AKPVi81ukH9ml5RmIPO1s/exec';
+
+// ====== EDIT YOUR QUESTIONS HERE ======
+// type: text | email | tel | number | textarea | select
+// For select, add options: ['A','B','C']
+// Add  upper: true  to turn the answer into capital letters
+const QUESTIONS = [
+  { label: 'Full name',  type: 'text', required: true },
+  { label: 'State code', type: 'text', required: true, upper: true, placeholder: 'e.g. LA/25A/1234' },
+{ label: 'Gender', type: 'select', required: true, options: ['Male', 'Female'] },
+  { label: 'Phone number', type: 'tel', required: false },
+];
+// ======================================
+
+let pos = null;
+const $ = id => document.getElementById(id);
+
+// Build the form from the QUESTIONS list
+QUESTIONS.forEach((q, i) => {
+  const wrap = document.createElement('div');
+  const lab = document.createElement('label');
+  lab.textContent = q.label + (q.required ? ' *' : '');
+  lab.htmlFor = 'q' + i;
+  let el;
+  if (q.type === 'textarea') { el = document.createElement('textarea'); el.rows = 3; }
+  else if (q.type === 'select') {
+    el = document.createElement('select');
+    el.innerHTML = '<option value="">Select...</option>' +
+      q.options.map(o => '<option>' + o + '</option>').join('');
+  } else { el = document.createElement('input'); el.type = q.type || 'text'; }
+  el.id = 'q' + i;
+  if (q.required) el.required = true;
+  if (q.placeholder) el.placeholder = q.placeholder;
+  if (q.upper) el.addEventListener('input', () => { el.value = el.value.toUpperCase(); });
+  wrap.append(lab, el);
+  $('fields').appendChild(wrap);
+});
+
+$('locBtn').onclick = () => {
+  $('gateMsg').classList.add('hidden');
+  if (!navigator.geolocation) return gateError('This browser does not support location.');
+  $('locBtn').textContent = 'Getting your location...';
+  navigator.geolocation.getCurrentPosition(onLoc, onErr,
+    { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
+};
+
+function onLoc(p) {
+  pos = { lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy };
+  $('gate').classList.add('hidden');
+  $('form').classList.remove('hidden');
+  $('locInfo').textContent = 'Location captured (accuracy about ' + Math.round(pos.accuracy) + ' m).';
+}
+
+function onErr(e) {
+  $('locBtn').textContent = 'Try again';
+  const m = { 1: 'Location was denied. Allow location for this page in your browser settings, then try again.',
+              2: 'Your location could not be determined. Turn on GPS and try again.',
+              3: 'Getting your location timed out. Try again.' };
+  gateError(m[e.code] || e.message);
+}
+function gateError(t) { $('gateMsg').textContent = t; $('gateMsg').classList.remove('hidden'); }
+
+$('form').onsubmit = async ev => {
+  ev.preventDefault();
+  if (!pos) return;
+  const btn = $('sendBtn'), msg = $('formMsg');
+  btn.disabled = true; btn.textContent = 'Submitting...'; msg.classList.add('hidden');
+
+  const answers = QUESTIONS.map((q, i) => ({ q: q.label, a: $('q' + i).value.trim() }));
+  try {
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      body: JSON.stringify({ answers, lat: pos.lat, lng: pos.lng, accuracy: pos.accuracy })
+    });
+    const r = await res.json();
+    if (!r.ok) throw new Error(r.error || 'Submission failed.');
+    $('form').innerHTML = '<div class="msg ok">Thank you, your response has been recorded.</div>';
+  } catch (err) {
+    btn.disabled = false; btn.textContent = 'Submit';
+    msg.className = 'msg err'; msg.textContent = err.message;
+  }
+};
+</script>
+</body>
+</html>
